@@ -178,7 +178,10 @@ def create_app() -> FastAPI:
         result["processed_records"] = result["transaction_count"]
         return PartitionSummaryResponse.model_validate(result)
 
-    frontend_dir = Path(__file__).resolve().parents[2] / "frontend"
+    frontend_root = Path(__file__).resolve().parents[2] / "frontend"
+    frontend_dir = frontend_root / "dist"
+    if not frontend_dir.exists():
+        frontend_dir = frontend_root / "fallback"
     app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
     return app
 

@@ -11,7 +11,7 @@ interface.
 
 ```mermaid
 flowchart LR
-    UI["Static Frontend<br/>Upload + Review"] --> API["FastAPI API"]
+    UI["Astro + React Frontend<br/>Upload + Review"] --> API["FastAPI API"]
     API --> INGEST["Batch Ingestion Service"]
     INGEST --> DB[("PostgreSQL / Supabase")]
     DB --> DETECT["Detection Service (Pandas)"]
@@ -24,7 +24,13 @@ flowchart LR
 
 ### Frontend
 
-- Static HTML, CSS, and JavaScript served directly by FastAPI
+- Astro application with a React client dashboard
+- Source organized into:
+  - `src/pages` for Astro routes
+  - `src/components` for React UI sections
+  - `src/lib` for API and export helpers
+  - `src/styles` for shared styling
+- Built static assets served by FastAPI from `frontend/dist`
 - Upload form for CSV files and configurable pipeline controls
 - Results dashboard showing:
   - partitions processed
@@ -148,13 +154,15 @@ Covered scenarios:
 ### Local
 
 - Run PostgreSQL through the included Docker Compose file
+- Build the frontend with `npm run build` from `frontend/`
 - Start FastAPI with Uvicorn
-- Use the bundled frontend served by the API
+- Use the Astro static build served by the API
 
 ### Supabase
 
 - Provision a Supabase project
 - Copy the project Postgres connection string into `DATABASE_URL`
+- Build the Astro frontend and ship the generated `dist` assets alongside the API container
 - Run the FastAPI app on a small VM or container host
 - Keep the frontend bundled with the API for a simple single-service deployment
 

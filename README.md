@@ -9,7 +9,7 @@ batch safety, retry behavior, partition isolation, and test coverage.
 
 - Backend: Python, FastAPI, SQLAlchemy, Pandas
 - Database: PostgreSQL, with Supabase-compatible connection support
-- Frontend: Static HTML, CSS, and JavaScript served by FastAPI
+- Frontend: Astro + React, built to static assets and served by FastAPI
 - Testing: PyTest
 - Data model: `transactions` and `fraud_alerts` tables with partition-aware uniqueness rules
 
@@ -61,11 +61,35 @@ Update `DATABASE_URL` if you want to point to Supabase instead of local PostgreS
 
 ### 3. Install dependencies
 
+Backend dependencies:
+
 ```powershell
 pip install -r requirements.txt
 ```
 
-### 4. Run the application
+Frontend dependencies:
+
+From `C:\Projects\FraudAnalyzer\frontend`:
+
+```powershell
+npm install
+```
+
+### 4. Build the frontend
+
+From `C:\Projects\FraudAnalyzer\frontend`:
+
+```powershell
+npm run build
+```
+
+For frontend-only development you can also run:
+
+```powershell
+npm run dev
+```
+
+### 5. Run the application
 
 From `C:\Projects\FraudAnalyzer\backend`:
 
@@ -100,7 +124,8 @@ to test the upload flow quickly.
 
 - `backend/app/` API, data models, and pipeline services
 - `backend/tests/` PyTest coverage
-- `frontend/` static UI served by FastAPI
+- `frontend/src/` Astro pages, React components, styles, and client utilities
+- `frontend/dist/` built frontend assets served by FastAPI after `npm run build`
 - `sample_data/` sample transaction batch
 - `docs/` architecture and design notes
 
