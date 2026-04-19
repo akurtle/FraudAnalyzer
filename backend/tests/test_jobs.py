@@ -48,6 +48,8 @@ tx-3,acct-1,merchant-1,120.00,2026-01-01T00:10:00Z,tenant-a
     assert response is not None
     assert response.status == "completed"
     assert response.run_id == accepted.run_id
+    assert response.current_stage == "completed"
+    assert response.progress_percentage == 100
     assert response.result is not None
     assert response.result.processed_partitions == 1
     assert response.result.total_alerts >= 1
@@ -94,6 +96,8 @@ tx-1,merchant-1,10.00,2026-01-01T00:00:00Z,tenant-a
 
     assert response is not None
     assert response.status == "failed"
+    assert response.current_stage == "failed"
+    assert response.progress_percentage == 100
     assert response.result is None
     assert response.error_message is not None
     assert run_response is not None

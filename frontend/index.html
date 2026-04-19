@@ -78,6 +78,15 @@
 
             <button id="submit-button" type="submit">Run Fraud Analysis</button>
           </form>
+          <div id="job-progress-card" class="progress-card hidden">
+            <div class="progress-copy">
+              <strong id="job-progress-label">Waiting to start...</strong>
+              <span id="job-progress-meta">0%</span>
+            </div>
+            <div class="progress-track">
+              <div id="job-progress-fill" class="progress-fill"></div>
+            </div>
+          </div>
 
           <div class="help-card">
             <h3>Expected CSV columns</h3>

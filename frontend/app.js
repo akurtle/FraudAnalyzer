@@ -7,6 +7,10 @@ const workbenchResults = document.getElementById("workbench-results");
 const apiStatus = document.getElementById("api-status");
 const filterForm = document.getElementById("filter-form");
 const clearFiltersButton = document.getElementById("clear-filters");
+const progressCard = document.getElementById("job-progress-card");
+const progressLabel = document.getElementById("job-progress-label");
+const progressMeta = document.getElementById("job-progress-meta");
+const progressFill = document.getElementById("job-progress-fill");
 const pollIntervalMs = 1200;
 let currentResult = null;
 
@@ -160,6 +164,24 @@ function renderMessage(message) {
   partitionResults.innerHTML = `<article class="partition-card"><p class="empty-state">${escapeHtml(message)}</p></article>`;
 }
 
+function formatStage(stage) {
+  return String(stage || "queued").replaceAll("_", " ");
+}
+
+function renderProgress(job) {
+  progressCard.classList.remove("hidden");
+  const percentage = Number(job.progress_percentage || 0);
+  progressLabel.textContent = `Stage: ${formatStage(job.current_stage)}`;
+  progressMeta.textContent = `${percentage}%`;
+  progressFill.style.width = `${Math.max(0, Math.min(100, percentage))}%`;
+}
+
+function resetProgress() {
+  progressLabel.textContent = "Waiting to start...";
+  progressMeta.textContent = "0%";
+  progressFill.style.width = "0%";
+}
+
 async function loadAlerts() {
   const formData = new FormData(filterForm);
   const params = new URLSearchParams();
@@ -232,12 +254,15 @@ async function pollJob(jobId) {
     }
 
     if (payload.status === "completed") {
+      renderProgress(payload);
       return payload.result;
     }
     if (payload.status === "failed") {
+      renderProgress(payload);
       throw new Error(payload.error_message || "Analysis job failed.");
     }
 
+    renderProgress(payload);
     renderMessage(`Job ${payload.job_id} is ${payload.status}. Refreshing results...`);
     await new Promise((resolve) => window.setTimeout(resolve, pollIntervalMs));
   }
@@ -247,6 +272,8 @@ form.addEventListener("submit", async (event) => {
   event.preventDefault();
   submitButton.disabled = true;
   submitButton.textContent = "Queueing...";
+  progressCard.classList.remove("hidden");
+  resetProgress();
 
   const formData = new FormData(form);
   for (const [key, value] of [...formData.entries()]) {

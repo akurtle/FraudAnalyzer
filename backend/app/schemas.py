@@ -51,6 +51,8 @@ class AnalysisJobResponse(BaseModel):
     job_id: str
     run_id: str | None = None
     status: str
+    current_stage: str | None = None
+    progress_percentage: int | None = None
     submitted_at: datetime
     started_at: datetime | None = None
     completed_at: datetime | None = None

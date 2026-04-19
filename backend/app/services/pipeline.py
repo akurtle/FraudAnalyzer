@@ -25,7 +25,11 @@ class FraudPipelineService:
         batch_size: int | None = None,
         max_retries: int | None = None,
         time_windows_hours: list[int] | None = None,
+        progress_callback=None,
     ) -> dict:
+        effective_time_windows = time_windows_hours or self.settings.parsed_time_windows
+        if progress_callback:
+            progress_callback("ingesting_transactions", 10)
         inserted_by_partition = self.ingestion_service.ingest_csv(
             session,
             payload,
@@ -34,25 +38,34 @@ class FraudPipelineService:
             max_retries=max_retries or self.settings.max_retries,
             retry_backoff_seconds=self.settings.retry_backoff_seconds,
         )
+        if progress_callback:
+            progress_callback("analyzing_partitions", 35)
 
         partition_summaries = []
-        for source_partition, processed_records in sorted(inserted_by_partition.items()):
+        partitions = sorted(inserted_by_partition.items())
+        for index, (source_partition, processed_records) in enumerate(partitions, start=1):
             result = self.detection_service.analyze_partition(
                 session,
                 source_partition=source_partition,
-                time_windows_hours=time_windows_hours or self.settings.parsed_time_windows,
+                time_windows_hours=effective_time_windows,
                 zscore_threshold=self.settings.zscore_threshold,
                 velocity_threshold=self.settings.velocity_threshold,
                 amount_ratio_threshold=self.settings.amount_ratio_threshold,
             )
             result["processed_records"] = processed_records
             partition_summaries.append(result)
+            if progress_callback:
+                progress_callback(
+                    "analyzing_partitions",
+                    min(95, 35 + int((index / max(len(partitions), 1)) * 55)),
+                )
 
         total_alerts = sum(summary["alert_count"] for summary in partition_summaries)
+        if progress_callback:
+            progress_callback("finalizing_results", 100)
         return {
             "processed_partitions": len(partition_summaries),
             "processed_records": sum(inserted_by_partition.values()),
             "total_alerts": total_alerts,
             "partitions": partition_summaries,
         }
-

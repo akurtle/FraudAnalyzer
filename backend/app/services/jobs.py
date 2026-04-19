@@ -64,7 +64,8 @@ class AnalysisJobService:
                     id=job_id,
                     analysis_run_id=run_id,
                     status="queued",
-                    request_params=request_params,
+                    request_params=request_params
+                    | {"current_stage": "queued", "progress_percentage": 0},
                     submitted_at=submitted_at,
                 )
             )
@@ -102,6 +103,8 @@ class AnalysisJobService:
             job_id=job.id,
             run_id=job.analysis_run_id,
             status=job.status,
+            current_stage=job.request_params.get("current_stage"),
+            progress_percentage=job.request_params.get("progress_percentage"),
             submitted_at=job.submitted_at,
             started_at=job.started_at,
             completed_at=job.completed_at,
@@ -159,6 +162,7 @@ class AnalysisJobService:
             started_at = utcnow()
             job.status = "running"
             job.started_at = started_at
+            self._set_job_progress(session, job, "starting_job", 5, commit=False)
             run.status = "running"
             run.started_at = started_at
             session.commit()
@@ -170,6 +174,11 @@ class AnalysisJobService:
                 batch_size=batch_size,
                 max_retries=max_retries,
                 time_windows_hours=time_windows_hours,
+                progress_callback=lambda stage, percentage: self._update_job_progress(
+                    job_id,
+                    stage,
+                    percentage,
+                ),
             )
             serialized_result = UploadAnalysisResponse.model_validate(result).model_dump(mode="json")
 
@@ -182,6 +191,7 @@ class AnalysisJobService:
             job.result = serialized_result
             job.error_message = None
             job.completed_at = completed_at
+            self._set_job_progress(session, job, "completed", 100, commit=False)
             run.status = "completed"
             run.processed_partitions = result["processed_partitions"]
             run.processed_records = result["processed_records"]
@@ -204,6 +214,7 @@ class AnalysisJobService:
                 job.status = "failed"
                 job.error_message = str(exc)
                 job.completed_at = completed_at
+                self._set_job_progress(failed_session, job, "failed", 100, commit=False)
                 run.status = "failed"
                 run.error_message = str(exc)
                 run.completed_at = completed_at
@@ -219,3 +230,29 @@ class AnalysisJobService:
         if getattr(started_at, "tzinfo", None) is None:
             completed_at = completed_at.replace(tzinfo=None)
         return int((completed_at - started_at).total_seconds() * 1000)
+
+    def _update_job_progress(self, job_id: str, stage: str, percentage: int) -> None:
+        session = self.session_factory()
+        try:
+            job = session.get(AnalysisJob, job_id)
+            if job is None:
+                return
+            self._set_job_progress(session, job, stage, percentage, commit=True)
+        finally:
+            session.close()
+
+    def _set_job_progress(
+        self,
+        session: Session,
+        job: AnalysisJob,
+        stage: str,
+        percentage: int,
+        *,
+        commit: bool,
+    ) -> None:
+        job.request_params = dict(job.request_params) | {
+            "current_stage": stage,
+            "progress_percentage": percentage,
+        }
+        if commit:
+            session.commit()

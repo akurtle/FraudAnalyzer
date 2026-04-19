@@ -1,6 +1,6 @@
 from collections.abc import Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import get_settings
@@ -27,6 +27,7 @@ def init_db() -> None:
     from app import models
 
     Base.metadata.create_all(bind=engine)
+    ensure_schema_compatibility()
 
 
 def get_session() -> Generator[Session, None, None]:
@@ -36,3 +37,13 @@ def get_session() -> Generator[Session, None, None]:
     finally:
         session.close()
 
+
+def ensure_schema_compatibility() -> None:
+    inspector = inspect(engine)
+    if not inspector.has_table("analysis_jobs"):
+        return
+
+    columns = {column["name"] for column in inspector.get_columns("analysis_jobs")}
+    if "analysis_run_id" not in columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE analysis_jobs ADD COLUMN analysis_run_id VARCHAR(36)"))
