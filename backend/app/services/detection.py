@@ -46,65 +46,73 @@ class DetectionService:
         created_at = utcnow()
 
         for window_hours in sorted(set(time_windows_hours)):
-            window_delta = pd.Timedelta(hours=window_hours)
-            for _, group in dataframe.groupby("account_id", sort=False):
-                group = group.reset_index(drop=True)
-                for index, current_row in group.iterrows():
-                    window_start = current_row["event_ts"] - window_delta
-                    history = group.loc[
-                        (group["event_ts"] >= window_start)
-                        & (group["event_ts"] <= current_row["event_ts"])
-                    ]
+            window_frame = self._compute_window_metrics(dataframe, window_hours)
 
-                    count_in_window = int(history.shape[0])
-                    median_amount = float(history["amount"].median()) if count_in_window else 0.0
-                    mean_amount = float(history["amount"].mean()) if count_in_window else 0.0
-                    std_amount = float(history["amount"].std(ddof=0)) if count_in_window > 1 else 0.0
+            velocity_candidates = window_frame.loc[
+                window_frame["count_in_window"] >= velocity_threshold
+            ].copy()
+            if not velocity_candidates.empty:
+                velocity_candidates["score"] = (
+                    velocity_candidates["count_in_window"] / velocity_threshold
+                ).round(3)
+                alerts.extend(
+                    self._build_alerts_from_frame(
+                        velocity_candidates,
+                        created_at=created_at,
+                        source_partition=source_partition,
+                        rule_name="velocity_spike",
+                        window_hours=window_hours,
+                        severity_builder=lambda row: self._severity(row.score),
+                        details_builder=lambda row: {
+                            "count_in_window": int(row.count_in_window),
+                            "threshold": velocity_threshold,
+                        },
+                    )
+                )
 
-                    if count_in_window >= velocity_threshold:
-                        alerts.append(
-                            self._build_alert(
-                                current_row=current_row,
-                                created_at=created_at,
-                                source_partition=source_partition,
-                                rule_name="velocity_spike",
-                                severity=self._severity(float(count_in_window) / velocity_threshold),
-                                score=round(float(count_in_window) / velocity_threshold, 3),
-                                window_hours=window_hours,
-                                details={
-                                    "count_in_window": count_in_window,
-                                    "threshold": velocity_threshold,
-                                },
-                            )
+            amount_candidates = window_frame.loc[window_frame["count_in_window"] >= 3].copy()
+            if not amount_candidates.empty:
+                median_reference = amount_candidates["median_amount"].where(
+                    amount_candidates["median_amount"] != 0
+                )
+                std_reference = amount_candidates["std_amount"].where(
+                    amount_candidates["std_amount"] != 0
+                )
+                amount_candidates["amount_ratio"] = (
+                    amount_candidates["amount"] / median_reference
+                ).fillna(0.0)
+                amount_candidates["zscore"] = (
+                    (amount_candidates["amount"] - amount_candidates["mean_amount"])
+                    / std_reference
+                ).fillna(0.0)
+                amount_candidates = amount_candidates.loc[
+                    (amount_candidates["zscore"] >= zscore_threshold)
+                    | (amount_candidates["amount_ratio"] >= amount_ratio_threshold)
+                ].copy()
+                if not amount_candidates.empty:
+                    amount_candidates["score"] = amount_candidates[
+                        ["zscore", "amount_ratio"]
+                    ].max(axis=1)
+                    amount_candidates["score"] = amount_candidates["score"].round(3)
+                    alerts.extend(
+                        self._build_alerts_from_frame(
+                            amount_candidates,
+                            created_at=created_at,
+                            source_partition=source_partition,
+                            rule_name="amount_spike",
+                            window_hours=window_hours,
+                            severity_builder=lambda row: self._severity(
+                                row.score / max(zscore_threshold, 1.0)
+                            ),
+                            details_builder=lambda row: {
+                                "mean_amount": round(float(row.mean_amount), 2),
+                                "median_amount": round(float(row.median_amount), 2),
+                                "std_amount": round(float(row.std_amount), 2),
+                                "zscore": round(float(row.zscore), 3),
+                                "amount_ratio": round(float(row.amount_ratio), 3),
+                            },
                         )
-
-                    if count_in_window >= 3:
-                        ratio = (current_row["amount"] / median_amount) if median_amount else 0.0
-                        zscore = (
-                            (current_row["amount"] - mean_amount) / std_amount
-                            if std_amount
-                            else 0.0
-                        )
-                        if zscore >= zscore_threshold or ratio >= amount_ratio_threshold:
-                            score = max(zscore, ratio)
-                            alerts.append(
-                                self._build_alert(
-                                    current_row=current_row,
-                                    created_at=created_at,
-                                    source_partition=source_partition,
-                                    rule_name="amount_spike",
-                                    severity=self._severity(score / max(zscore_threshold, 1.0)),
-                                    score=round(float(score), 3),
-                                    window_hours=window_hours,
-                                    details={
-                                        "mean_amount": round(mean_amount, 2),
-                                        "median_amount": round(median_amount, 2),
-                                        "std_amount": round(std_amount, 2),
-                                        "zscore": round(float(zscore), 3),
-                                        "amount_ratio": round(float(ratio), 3),
-                                    },
-                                )
-                            )
+                    )
 
         deduplicated = self._deduplicate_alerts(alerts)
         self.repository.replace_partition_alerts(session, source_partition, deduplicated)
@@ -120,10 +128,71 @@ class DetectionService:
             "alerts": stored_alerts,
         }
 
+    def _compute_window_metrics(self, dataframe: pd.DataFrame, window_hours: int) -> pd.DataFrame:
+        rolling_window = f"{window_hours}h"
+        rolling_group = dataframe.groupby("account_id", sort=False).rolling(
+            rolling_window,
+            on="event_ts",
+        )
+        aggregates = (
+            rolling_group["amount"]
+            .agg(["count", "mean", "median"])
+            .reset_index(drop=True)
+            .rename(
+                columns={
+                    "count": "count_in_window",
+                    "mean": "mean_amount",
+                    "median": "median_amount",
+                }
+            )
+        )
+        std_amount = (
+            rolling_group["amount"]
+            .std(ddof=0)
+            .reset_index(drop=True)
+            .fillna(0.0)
+            .rename("std_amount")
+        )
+
+        window_frame = dataframe.copy()
+        window_frame["count_in_window"] = aggregates["count_in_window"].astype(int)
+        window_frame["mean_amount"] = aggregates["mean_amount"].astype(float)
+        window_frame["median_amount"] = aggregates["median_amount"].astype(float)
+        window_frame["std_amount"] = std_amount.astype(float)
+        return window_frame
+
+    def _build_alerts_from_frame(
+        self,
+        dataframe: pd.DataFrame,
+        *,
+        created_at,
+        source_partition: str,
+        rule_name: str,
+        window_hours: int,
+        severity_builder,
+        details_builder,
+    ) -> list[dict]:
+        alerts: list[dict] = []
+        for row in dataframe.itertuples(index=False):
+            details = details_builder(row)
+            alerts.append(
+                self._build_alert(
+                    row=row,
+                    created_at=created_at,
+                    source_partition=source_partition,
+                    rule_name=rule_name,
+                    severity=severity_builder(row),
+                    score=float(row.score),
+                    window_hours=window_hours,
+                    details=details,
+                )
+            )
+        return alerts
+
     def _build_alert(
         self,
         *,
-        current_row: pd.Series,
+        row,
         created_at,
         source_partition: str,
         rule_name: str,
@@ -132,7 +201,7 @@ class DetectionService:
         window_hours: int,
         details: dict,
     ) -> dict:
-        event_ts = current_row["event_ts"]
+        event_ts = row.event_ts
         if hasattr(event_ts, "to_pydatetime"):
             event_ts = event_ts.to_pydatetime()
         if event_ts.tzinfo is None:
@@ -140,12 +209,12 @@ class DetectionService:
 
         return {
             "source_partition": source_partition,
-            "transaction_id": str(current_row["transaction_id"]),
-            "account_id": str(current_row["account_id"]),
-            "merchant_id": str(current_row["merchant_id"]),
+            "transaction_id": str(row.transaction_id),
+            "account_id": str(row.account_id),
+            "merchant_id": str(row.merchant_id),
             "rule_name": rule_name,
             "severity": severity,
-            "score": score,
+            "score": round(score, 3),
             "window_hours": window_hours,
             "details": details | {"event_ts": event_ts.isoformat()},
             "created_at": created_at,
@@ -173,4 +242,3 @@ class DetectionService:
         if normalized_score >= 1.0:
             return "medium"
         return "low"
-
