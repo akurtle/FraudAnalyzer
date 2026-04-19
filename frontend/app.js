@@ -4,6 +4,10 @@ const resultsPanel = document.getElementById("results-panel");
 const summaryCards = document.getElementById("summary-cards");
 const partitionResults = document.getElementById("partition-results");
 const workbenchResults = document.getElementById("workbench-results");
+const dashboardCards = document.getElementById("dashboard-cards");
+const topAccounts = document.getElementById("top-accounts");
+const topMerchants = document.getElementById("top-merchants");
+const topPartitions = document.getElementById("top-partitions");
 const apiStatus = document.getElementById("api-status");
 const filterForm = document.getElementById("filter-form");
 const clearFiltersButton = document.getElementById("clear-filters");
@@ -16,6 +20,7 @@ const progressFill = document.getElementById("job-progress-fill");
 const pollIntervalMs = 1200;
 let currentResult = null;
 let currentWorkbenchAlerts = [];
+let currentRunId = null;
 
 async function checkHealth() {
   try {
@@ -36,6 +41,20 @@ function metricCard(label, value) {
     <article class="summary-card">
       <span>${label}</span>
       <strong>${value}</strong>
+    </article>
+  `;
+}
+
+function metricCardWithDelta(label, value, delta) {
+  const deltaLabel =
+    delta === null || delta === undefined
+      ? "No prior run"
+      : `${delta >= 0 ? "+" : ""}${delta}`;
+  return `
+    <article class="summary-card">
+      <span>${label}</span>
+      <strong>${value}</strong>
+      <small>${escapeHtml(deltaLabel)}</small>
     </article>
   `;
 }
@@ -159,6 +178,89 @@ function renderResults(data) {
 
   partitionResults.innerHTML = data.partitions.map(renderPartition).join("");
   resultsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function aggregateEntities(alerts, key) {
+  const counts = new Map();
+  alerts.forEach((alert) => {
+    const entity = alert[key];
+    const current = counts.get(entity) || { label: entity, alerts: 0, score: 0 };
+    current.alerts += 1;
+    current.score += Number(alert.score || 0);
+    counts.set(entity, current);
+  });
+  return [...counts.values()].sort((left, right) => right.score - left.score).slice(0, 5);
+}
+
+function renderInsightList(target, entries, emptyLabel) {
+  if (entries.length === 0) {
+    target.innerHTML = `<p class="empty-state">${escapeHtml(emptyLabel)}</p>`;
+    return;
+  }
+
+  target.innerHTML = entries
+    .map(
+      (entry) => `
+        <div class="insight-row">
+          <div>
+            <strong>${escapeHtml(entry.label)}</strong>
+            <span>${entry.alerts} alerts</span>
+          </div>
+          <span>${entry.score.toFixed(2)} risk score</span>
+        </div>
+      `,
+    )
+    .join("");
+}
+
+async function renderDashboard() {
+  if (!currentResult) {
+    dashboardCards.innerHTML = "";
+    topAccounts.innerHTML = "";
+    topMerchants.innerHTML = "";
+    topPartitions.innerHTML = "";
+    return;
+  }
+
+  const alerts = currentResult.partitions.flatMap((partition) => partition.alerts);
+  const runsResponse = await fetch("/api/runs?limit=5");
+  const runs = runsResponse.ok ? await runsResponse.json() : [];
+  const previousRun = runs.find((run) => run.run_id !== currentRunId && run.status === "completed");
+  const previousSummary = previousRun?.summary || null;
+
+  dashboardCards.innerHTML = [
+    metricCardWithDelta(
+      "Alert Trend",
+      currentResult.total_alerts,
+      previousSummary ? currentResult.total_alerts - previousSummary.total_alerts : null,
+    ),
+    metricCardWithDelta(
+      "Record Trend",
+      currentResult.processed_records,
+      previousSummary ? currentResult.processed_records - previousSummary.processed_records : null,
+    ),
+    metricCardWithDelta(
+      "Partition Trend",
+      currentResult.processed_partitions,
+      previousSummary
+        ? currentResult.processed_partitions - previousSummary.processed_partitions
+        : null,
+    ),
+  ].join("");
+
+  renderInsightList(topAccounts, aggregateEntities(alerts, "account_id"), "No risky accounts yet.");
+  renderInsightList(topMerchants, aggregateEntities(alerts, "merchant_id"), "No risky merchants yet.");
+  renderInsightList(
+    topPartitions,
+    currentResult.partitions
+      .map((partition) => ({
+        label: partition.source_partition,
+        alerts: partition.alert_count,
+        score: partition.alerts.reduce((sum, alert) => sum + Number(alert.score || 0), 0),
+      }))
+      .sort((left, right) => right.score - left.score),
+    "No risky partitions yet.",
+  );
 }
 
 function renderMessage(message) {
@@ -352,10 +454,12 @@ form.addEventListener("submit", async (event) => {
     if (!response.ok) {
       throw new Error(payload.detail || "Analysis failed.");
     }
+    currentRunId = payload.run_id;
     submitButton.textContent = "Polling...";
     renderMessage(`Job ${payload.job_id} accepted. Waiting for analysis to finish...`);
     const result = await pollJob(payload.job_id);
     renderResults(result);
+    await renderDashboard();
     await loadAlerts();
   } catch (error) {
     renderMessage(error.message);

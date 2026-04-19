@@ -422,6 +422,39 @@ button:disabled {
   margin-top: 22px;
 }
 
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-top: 18px;
+}
+
+.insight-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.insight-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(30, 42, 47, 0.05);
+}
+
+.insight-row strong {
+  display: block;
+  font-size: 1rem;
+}
+
+.insight-row span {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
 .partition-card {
   padding: 20px;
 }
@@ -527,7 +560,8 @@ code {
   .grid-layout,
   .two-column,
   .summary-cards,
-  .filter-grid {
+  .filter-grid,
+  .dashboard-grid {
     grid-template-columns: 1fr;
   }
 

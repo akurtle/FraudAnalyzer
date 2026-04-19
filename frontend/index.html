@@ -147,6 +147,27 @@
           <button id="export-json" type="button">Download JSON</button>
           <button id="export-csv" type="button" class="secondary-button">Download CSV</button>
         </div>
+        <section class="workbench-panel">
+          <div class="panel-heading">
+            <span class="section-tag">Risk Dashboard</span>
+            <h3>Partition trends and high-risk entities</h3>
+          </div>
+          <div id="dashboard-cards" class="summary-cards"></div>
+          <div class="dashboard-grid">
+            <article class="partition-card">
+              <h3>Top Risky Accounts</h3>
+              <div id="top-accounts" class="insight-list"></div>
+            </article>
+            <article class="partition-card">
+              <h3>Top Risky Merchants</h3>
+              <div id="top-merchants" class="insight-list"></div>
+            </article>
+            <article class="partition-card">
+              <h3>Partition Spotlight</h3>
+              <div id="top-partitions" class="insight-list"></div>
+            </article>
+          </div>
+        </section>
 
         <section class="workbench-panel">
           <div class="panel-heading">
