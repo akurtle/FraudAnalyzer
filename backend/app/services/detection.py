@@ -226,7 +226,7 @@ class DetectionService:
             "severity": severity,
             "score": round(score, 3),
             "window_hours": window_hours,
-            "details": details | {"event_ts": event_ts.isoformat()},
+            "details": details | {"event_ts": event_ts.isoformat(), "analyst_status": "open"},
             "created_at": created_at,
         }
 

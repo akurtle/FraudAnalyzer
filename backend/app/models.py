@@ -53,6 +53,10 @@ class FraudAlert(Base):
     details: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
+    @property
+    def analyst_status(self) -> str:
+        return self.details.get("analyst_status", "open")
+
 
 class AnalysisJob(Base):
     __tablename__ = "analysis_jobs"

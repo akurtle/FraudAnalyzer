@@ -3,8 +3,12 @@ const submitButton = document.getElementById("submit-button");
 const resultsPanel = document.getElementById("results-panel");
 const summaryCards = document.getElementById("summary-cards");
 const partitionResults = document.getElementById("partition-results");
+const workbenchResults = document.getElementById("workbench-results");
 const apiStatus = document.getElementById("api-status");
+const filterForm = document.getElementById("filter-form");
+const clearFiltersButton = document.getElementById("clear-filters");
 const pollIntervalMs = 1200;
+let currentResult = null;
 
 async function checkHealth() {
   try {
@@ -66,6 +70,31 @@ function renderAlertRows(alerts) {
     .join("");
 }
 
+function renderWorkbenchRows(alerts) {
+  return alerts
+    .map(
+      (alert) => `
+        <tr>
+          <td><code>${escapeHtml(alert.source_partition)}</code></td>
+          <td><code>${escapeHtml(alert.transaction_id)}</code></td>
+          <td><code>${escapeHtml(alert.account_id)}</code></td>
+          <td><code>${escapeHtml(alert.merchant_id)}</code></td>
+          <td>${escapeHtml(alert.rule_name)}</td>
+          <td><span class="severity-chip">${escapeHtml(alert.severity)}</span></td>
+          <td>${escapeHtml(alert.details?.explanation || "No explanation")}</td>
+          <td>
+            <select class="status-select" data-alert-id="${alert.id}">
+              <option value="open" ${alert.analyst_status === "open" ? "selected" : ""}>Open</option>
+              <option value="reviewed" ${alert.analyst_status === "reviewed" ? "selected" : ""}>Reviewed</option>
+              <option value="dismissed" ${alert.analyst_status === "dismissed" ? "selected" : ""}>Dismissed</option>
+            </select>
+          </td>
+        </tr>
+      `,
+    )
+    .join("");
+}
+
 function renderPartition(partition) {
   const ruleSummary = Object.entries(partition.rules_triggered || {})
     .map(([rule, count]) => `<span class="rule-chip">${escapeHtml(rule)}: ${count}</span>`)
@@ -113,6 +142,7 @@ function renderPartition(partition) {
 }
 
 function renderResults(data) {
+  currentResult = data;
   resultsPanel.classList.remove("hidden");
   summaryCards.innerHTML = [
     metricCard("Partitions Processed", data.processed_partitions),
@@ -128,6 +158,69 @@ function renderMessage(message) {
   resultsPanel.classList.remove("hidden");
   summaryCards.innerHTML = "";
   partitionResults.innerHTML = `<article class="partition-card"><p class="empty-state">${escapeHtml(message)}</p></article>`;
+}
+
+async function loadAlerts() {
+  const formData = new FormData(filterForm);
+  const params = new URLSearchParams();
+  for (const [key, value] of formData.entries()) {
+    if (String(value).trim()) {
+      params.set(key, value);
+    }
+  }
+
+  const response = await fetch(`/api/alerts?${params.toString()}`);
+  const alerts = await response.json();
+  if (!response.ok) {
+    throw new Error(alerts.detail || "Unable to load alerts.");
+  }
+
+  if (alerts.length === 0) {
+    workbenchResults.innerHTML = `<p class="empty-state">No alerts matched the current filters.</p>`;
+    return;
+  }
+
+  workbenchResults.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Partition</th>
+          <th>Transaction</th>
+          <th>Account</th>
+          <th>Merchant</th>
+          <th>Rule</th>
+          <th>Severity</th>
+          <th>Explanation</th>
+          <th>Triage</th>
+        </tr>
+      </thead>
+      <tbody>${renderWorkbenchRows(alerts)}</tbody>
+    </table>
+  `;
+}
+
+async function updateAlertStatus(alertId, analystStatus) {
+  const response = await fetch(`/api/alerts/${alertId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ analyst_status: analystStatus }),
+  });
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.detail || "Unable to update alert status.");
+  }
+
+  if (currentResult) {
+    currentResult.partitions.forEach((partition) => {
+      partition.alerts.forEach((alert) => {
+        if (alert.id === Number(alertId)) {
+          alert.analyst_status = analystStatus;
+          alert.details.analyst_status = analystStatus;
+        }
+      });
+    });
+    partitionResults.innerHTML = currentResult.partitions.map(renderPartition).join("");
+  }
 }
 
 async function pollJob(jobId) {
@@ -176,6 +269,7 @@ form.addEventListener("submit", async (event) => {
     renderMessage(`Job ${payload.job_id} accepted. Waiting for analysis to finish...`);
     const result = await pollJob(payload.job_id);
     renderResults(result);
+    await loadAlerts();
   } catch (error) {
     renderMessage(error.message);
   } finally {
@@ -184,4 +278,38 @@ form.addEventListener("submit", async (event) => {
   }
 });
 
+filterForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    await loadAlerts();
+  } catch (error) {
+    workbenchResults.innerHTML = `<p class="empty-state">${escapeHtml(error.message)}</p>`;
+  }
+});
+
+clearFiltersButton.addEventListener("click", async () => {
+  filterForm.reset();
+  try {
+    await loadAlerts();
+  } catch (error) {
+    workbenchResults.innerHTML = `<p class="empty-state">${escapeHtml(error.message)}</p>`;
+  }
+});
+
+workbenchResults.addEventListener("change", async (event) => {
+  if (!event.target.matches(".status-select")) {
+    return;
+  }
+  const alertId = event.target.getAttribute("data-alert-id");
+  try {
+    await updateAlertStatus(alertId, event.target.value);
+    await loadAlerts();
+  } catch (error) {
+    renderMessage(error.message);
+  }
+});
+
 checkHealth();
+loadAlerts().catch(() => {
+  workbenchResults.innerHTML = `<p class="empty-state">Upload a batch to start triaging alerts.</p>`;
+});

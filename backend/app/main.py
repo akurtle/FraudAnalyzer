@@ -13,6 +13,8 @@ from app.schemas import (
     AnalysisJobAcceptedResponse,
     AnalysisJobResponse,
     AnalysisRunResponse,
+    AlertResponse,
+    AlertStatusUpdateRequest,
     HealthResponse,
     PartitionSummaryResponse,
 )
@@ -108,6 +110,47 @@ def create_app() -> FastAPI:
         if response is None:
             raise HTTPException(status_code=404, detail="Analysis run not found.")
         return response
+
+    @app.get("/api/alerts", response_model=list[AlertResponse])
+    def list_alerts(
+        source_partition: str | None = None,
+        severity: str | None = None,
+        rule_name: str | None = None,
+        account_id: str | None = None,
+        merchant_id: str | None = None,
+        window_hours: int | None = None,
+        analyst_status: str | None = None,
+        session: Session = Depends(get_session),
+    ) -> list[AlertResponse]:
+        alerts = repository.fetch_alerts(
+            session,
+            source_partition=source_partition,
+            severity=severity,
+            rule_name=rule_name,
+            account_id=account_id,
+            merchant_id=merchant_id,
+            window_hours=window_hours,
+            analyst_status=analyst_status,
+        )
+        return [AlertResponse.model_validate(alert) for alert in alerts]
+
+    @app.patch("/api/alerts/{alert_id}", response_model=AlertResponse)
+    def update_alert_status(
+        alert_id: int,
+        payload: AlertStatusUpdateRequest,
+        session: Session = Depends(get_session),
+    ) -> AlertResponse:
+        if payload.analyst_status not in {"open", "reviewed", "dismissed"}:
+            raise HTTPException(status_code=400, detail="Unsupported analyst status.")
+
+        alert = repository.update_alert_status(
+            session,
+            alert_id=alert_id,
+            analyst_status=payload.analyst_status,
+        )
+        if alert is None:
+            raise HTTPException(status_code=404, detail="Alert not found.")
+        return AlertResponse.model_validate(alert)
 
     @app.get("/api/partitions", response_model=list[str])
     def list_partitions(session: Session = Depends(get_session)) -> list[str]:

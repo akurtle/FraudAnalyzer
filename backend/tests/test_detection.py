@@ -39,6 +39,7 @@ tx-5,acct-1,merchant-1,250.00,2026-01-01T00:40:00Z,tenant-a
     explanations = [alert.details["explanation"] for alert in result["alerts"]]
     assert any("exceeded the threshold" in explanation for explanation in explanations)
     assert any("recent median" in explanation for explanation in explanations)
+    assert all(alert.details["analyst_status"] == "open" for alert in result["alerts"])
 
 
 def test_detection_preserves_partition_isolation(db_session: Session):

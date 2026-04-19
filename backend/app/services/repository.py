@@ -61,6 +61,58 @@ class FraudRepository:
         )
         return list(rows.scalars().all())
 
+    def fetch_alerts(
+        self,
+        session: Session,
+        *,
+        source_partition: str | None = None,
+        severity: str | None = None,
+        rule_name: str | None = None,
+        account_id: str | None = None,
+        merchant_id: str | None = None,
+        window_hours: int | None = None,
+        analyst_status: str | None = None,
+    ) -> list[FraudAlert]:
+        query = select(FraudAlert)
+        if source_partition:
+            query = query.where(FraudAlert.source_partition == source_partition)
+        if severity:
+            query = query.where(FraudAlert.severity == severity)
+        if rule_name:
+            query = query.where(FraudAlert.rule_name == rule_name)
+        if account_id:
+            query = query.where(FraudAlert.account_id == account_id)
+        if merchant_id:
+            query = query.where(FraudAlert.merchant_id == merchant_id)
+        if window_hours is not None:
+            query = query.where(FraudAlert.window_hours == window_hours)
+
+        rows = session.execute(
+            query.order_by(FraudAlert.score.desc(), FraudAlert.created_at.desc())
+        )
+        alerts = list(rows.scalars().all())
+        if analyst_status:
+            alerts = [alert for alert in alerts if alert.analyst_status == analyst_status]
+        return alerts
+
+    def update_alert_status(
+        self,
+        session: Session,
+        *,
+        alert_id: int,
+        analyst_status: str,
+    ) -> FraudAlert | None:
+        alert = session.get(FraudAlert, alert_id)
+        if alert is None:
+            return None
+
+        details = dict(alert.details or {})
+        details["analyst_status"] = analyst_status
+        alert.details = details
+        session.commit()
+        session.refresh(alert)
+        return alert
+
     def list_partitions(self, session: Session) -> list[str]:
         rows = session.execute(
             select(Transaction.source_partition).distinct().order_by(Transaction.source_partition)
@@ -69,4 +121,3 @@ class FraudRepository:
 
     def count_partition_transactions(self, session: Session, source_partition: str) -> int:
         return len(self.fetch_partition_transactions(session, source_partition))
-

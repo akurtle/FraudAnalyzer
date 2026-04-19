@@ -243,7 +243,22 @@ input {
   font-size: 0.98rem;
 }
 
+select {
+  width: 100%;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(30, 42, 47, 0.16);
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text);
+  font-size: 0.98rem;
+}
+
 input:focus {
+  outline: 2px solid rgba(15, 108, 116, 0.24);
+  border-color: var(--accent);
+}
+
+select:focus {
   outline: 2px solid rgba(15, 108, 116, 0.24);
   border-color: var(--accent);
 }
@@ -269,6 +284,12 @@ button:hover {
 button:disabled {
   cursor: wait;
   opacity: 0.8;
+}
+
+.secondary-button {
+  background: rgba(30, 42, 47, 0.08);
+  box-shadow: none;
+  color: var(--text);
 }
 
 .help-card {
@@ -319,6 +340,26 @@ button:disabled {
 
 .results-panel {
   margin-top: 20px;
+}
+
+.workbench-panel {
+  margin-top: 24px;
+}
+
+.compact-form {
+  margin-top: 18px;
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.button-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .hidden {
@@ -418,6 +459,10 @@ td code {
   font-size: 0.88rem;
 }
 
+.status-select {
+  min-width: 130px;
+}
+
 .footer-note {
   margin-top: 20px;
   border-radius: 20px;
@@ -446,7 +491,8 @@ code {
   .hero-metrics,
   .grid-layout,
   .two-column,
-  .summary-cards {
+  .summary-cards,
+  .filter-grid {
     grid-template-columns: 1fr;
   }
 
@@ -470,4 +516,3 @@ code {
     padding: 12px;
   }
 }
-

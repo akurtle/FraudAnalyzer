@@ -135,6 +135,55 @@
           <h2>Flagged Fraud Patterns</h2>
         </div>
 
+        <section class="workbench-panel">
+          <div class="panel-heading">
+            <span class="section-tag">Analyst Workbench</span>
+            <h3>Filter and triage alerts</h3>
+          </div>
+          <form id="filter-form" class="upload-form compact-form">
+            <div class="filter-grid">
+              <label>
+                <span>Partition</span>
+                <input type="text" id="filter_partition" name="source_partition" placeholder="tenant-a" />
+              </label>
+              <label>
+                <span>Severity</span>
+                <input type="text" id="filter_severity" name="severity" placeholder="high" />
+              </label>
+              <label>
+                <span>Rule</span>
+                <input type="text" id="filter_rule" name="rule_name" placeholder="amount_spike" />
+              </label>
+              <label>
+                <span>Account</span>
+                <input type="text" id="filter_account" name="account_id" placeholder="acct-1" />
+              </label>
+              <label>
+                <span>Merchant</span>
+                <input type="text" id="filter_merchant" name="merchant_id" placeholder="merchant-10" />
+              </label>
+              <label>
+                <span>Window</span>
+                <input type="number" id="filter_window" name="window_hours" placeholder="24" min="1" />
+              </label>
+              <label>
+                <span>Analyst Status</span>
+                <select id="filter_status" name="analyst_status">
+                  <option value="">All</option>
+                  <option value="open">Open</option>
+                  <option value="reviewed">Reviewed</option>
+                  <option value="dismissed">Dismissed</option>
+                </select>
+              </label>
+            </div>
+            <div class="button-row">
+              <button id="apply-filters" type="submit">Apply Filters</button>
+              <button id="clear-filters" type="button" class="secondary-button">Clear</button>
+            </div>
+          </form>
+          <div id="workbench-results" class="table-wrap"></div>
+        </section>
+
         <div id="summary-cards" class="summary-cards"></div>
         <div id="partition-results" class="partition-results"></div>
       </section>
@@ -151,4 +200,3 @@
     <script src="/app.js"></script>
   </body>
 </html>
-

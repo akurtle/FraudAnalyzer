@@ -4,12 +4,14 @@ from pydantic import BaseModel, ConfigDict
 
 
 class AlertResponse(BaseModel):
+    id: int
     source_partition: str
     transaction_id: str
     account_id: str
     merchant_id: str
     rule_name: str
     severity: str
+    analyst_status: str
     score: float
     window_hours: int
     details: dict
@@ -71,3 +73,7 @@ class AnalysisRunResponse(BaseModel):
     submitted_at: datetime
     started_at: datetime | None = None
     completed_at: datetime | None = None
+
+
+class AlertStatusUpdateRequest(BaseModel):
+    analyst_status: str
