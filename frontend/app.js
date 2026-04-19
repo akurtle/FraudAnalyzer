@@ -41,7 +41,9 @@ function escapeHtml(value) {
 function renderAlertRows(alerts) {
   return alerts
     .map((alert) => {
+      const explanation = alert.details?.explanation || "No explanation provided";
       const details = Object.entries(alert.details || {})
+        .filter(([key]) => key !== "explanation")
         .slice(0, 4)
         .map(([key, value]) => `${key}: ${value}`)
         .join(" | ");
@@ -54,7 +56,10 @@ function renderAlertRows(alerts) {
           <td><span class="severity-chip">${escapeHtml(alert.severity)}</span></td>
           <td>${Number(alert.score).toFixed(2)}</td>
           <td>${escapeHtml(String(alert.window_hours))}</td>
-          <td>${escapeHtml(details || "No details")}</td>
+          <td>
+            <strong>${escapeHtml(explanation)}</strong><br />
+            <span>${escapeHtml(details || "No details")}</span>
+          </td>
         </tr>
       `;
     })

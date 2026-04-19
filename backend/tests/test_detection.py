@@ -36,6 +36,9 @@ tx-5,acct-1,merchant-1,250.00,2026-01-01T00:40:00Z,tenant-a
     assert result["alert_count"] >= 2
     assert "velocity_spike" in result["rules_triggered"]
     assert "amount_spike" in result["rules_triggered"]
+    explanations = [alert.details["explanation"] for alert in result["alerts"]]
+    assert any("exceeded the threshold" in explanation for explanation in explanations)
+    assert any("recent median" in explanation for explanation in explanations)
 
 
 def test_detection_preserves_partition_isolation(db_session: Session):
@@ -75,4 +78,3 @@ tx-4,acct-1,merchant-1,200.00,2026-01-01T00:15:00Z,tenant-b
 
     assert tenant_a["alert_count"] == 0
     assert tenant_b["alert_count"] == 0
-

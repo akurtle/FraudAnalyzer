@@ -64,6 +64,11 @@ class DetectionService:
                         window_hours=window_hours,
                         severity_builder=lambda row: self._severity(row.score),
                         details_builder=lambda row: {
+                            "explanation": (
+                                f"{int(row.count_in_window)} transactions in the last "
+                                f"{window_hours} hour(s) exceeded the threshold of "
+                                f"{velocity_threshold}."
+                            ),
                             "count_in_window": int(row.count_in_window),
                             "threshold": velocity_threshold,
                         },
@@ -105,6 +110,11 @@ class DetectionService:
                                 row.score / max(zscore_threshold, 1.0)
                             ),
                             details_builder=lambda row: {
+                                "explanation": (
+                                    f"Amount was {round(float(row.amount_ratio), 2)}x the recent median "
+                                    f"with z-score {round(float(row.zscore), 2)} in the last "
+                                    f"{window_hours} hour(s)."
+                                ),
                                 "mean_amount": round(float(row.mean_amount), 2),
                                 "median_amount": round(float(row.median_amount), 2),
                                 "std_amount": round(float(row.std_amount), 2),
