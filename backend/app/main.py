@@ -1,15 +1,22 @@
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
-from app.database import get_session, init_db
-from app.schemas import HealthResponse, PartitionSummaryResponse, UploadAnalysisResponse
+from app.database import SessionLocal, get_session, init_db
+from app.schemas import (
+    AnalysisJobAcceptedResponse,
+    AnalysisJobResponse,
+    HealthResponse,
+    PartitionSummaryResponse,
+)
 from app.services.detection import DetectionService
+from app.services.jobs import AnalysisJobService
 from app.services.pipeline import FraudPipelineService
 from app.services.repository import FraudRepository
 
@@ -40,28 +47,38 @@ def create_app() -> FastAPI:
     repository = FraudRepository()
     detection_service = DetectionService(repository=repository)
     pipeline = FraudPipelineService(settings=settings, detection_service=detection_service)
+    app.state.job_service = AnalysisJobService(
+        session_factory=SessionLocal,
+        pipeline=pipeline,
+        executor=ThreadPoolExecutor(
+            max_workers=settings.job_workers,
+            thread_name_prefix="fraud-analysis",
+        ),
+    )
 
     @app.get("/api/health", response_model=HealthResponse)
     def healthcheck() -> HealthResponse:
         return HealthResponse(status="ok")
 
-    @app.post("/api/analyze/upload", response_model=UploadAnalysisResponse)
+    @app.post(
+        "/api/analyze/upload",
+        response_model=AnalysisJobAcceptedResponse,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
     async def analyze_upload(
         file: UploadFile = File(...),
         source_partition: str | None = Form(default=None),
         batch_size: int | None = Form(default=None),
         max_retries: int | None = Form(default=None),
         time_windows: str | None = Form(default=None),
-        session: Session = Depends(get_session),
-    ) -> UploadAnalysisResponse:
+    ) -> AnalysisJobAcceptedResponse:
         if not file.filename or not file.filename.lower().endswith(".csv"):
             raise HTTPException(status_code=400, detail="Upload a CSV file containing transactions.")
 
         payload = await file.read()
         try:
-            result = pipeline.process_upload(
-                session,
-                payload,
+            return app.state.job_service.submit_job(
+                payload=payload,
                 default_partition=source_partition,
                 batch_size=batch_size,
                 max_retries=max_retries,
@@ -70,9 +87,14 @@ def create_app() -> FastAPI:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except Exception as exc:
-            raise HTTPException(status_code=500, detail=f"Analysis failed: {exc}") from exc
+            raise HTTPException(status_code=500, detail=f"Job submission failed: {exc}") from exc
 
-        return UploadAnalysisResponse.model_validate(result)
+    @app.get("/api/jobs/{job_id}", response_model=AnalysisJobResponse)
+    def get_job(job_id: str, session: Session = Depends(get_session)) -> AnalysisJobResponse:
+        response = app.state.job_service.get_job_response(session, job_id)
+        if response is None:
+            raise HTTPException(status_code=404, detail="Analysis job not found.")
+        return response
 
     @app.get("/api/partitions", response_model=list[str])
     def list_partitions(session: Session = Depends(get_session)) -> list[str]:
@@ -100,4 +122,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-

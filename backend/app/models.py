@@ -53,3 +53,15 @@ class FraudAlert(Base):
     details: Mapped[dict] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
+
+class AnalysisJob(Base):
+    __tablename__ = "analysis_jobs"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, index=True)
+    status: Mapped[str] = mapped_column(String(24), index=True)
+    request_params: Mapped[dict] = mapped_column(JSON)
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

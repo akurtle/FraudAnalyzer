@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     zscore_threshold: float = Field(default=2.5, alias="ZSCORE_THRESHOLD")
     velocity_threshold: int = Field(default=5, alias="VELOCITY_THRESHOLD")
     amount_ratio_threshold: float = Field(default=3.0, alias="AMOUNT_RATIO_THRESHOLD")
+    job_workers: int = Field(default=2, alias="JOB_WORKERS")
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -33,4 +34,3 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

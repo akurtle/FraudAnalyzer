@@ -37,3 +37,18 @@ class UploadAnalysisResponse(BaseModel):
 class HealthResponse(BaseModel):
     status: str
 
+
+class AnalysisJobAcceptedResponse(BaseModel):
+    job_id: str
+    status: str
+    submitted_at: datetime
+
+
+class AnalysisJobResponse(BaseModel):
+    job_id: str
+    status: str
+    submitted_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    error_message: str | None = None
+    result: UploadAnalysisResponse | None = None

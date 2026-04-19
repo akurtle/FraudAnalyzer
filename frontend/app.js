@@ -4,6 +4,7 @@ const resultsPanel = document.getElementById("results-panel");
 const summaryCards = document.getElementById("summary-cards");
 const partitionResults = document.getElementById("partition-results");
 const apiStatus = document.getElementById("api-status");
+const pollIntervalMs = 1200;
 
 async function checkHealth() {
   try {
@@ -118,10 +119,36 @@ function renderResults(data) {
   resultsPanel.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+function renderMessage(message) {
+  resultsPanel.classList.remove("hidden");
+  summaryCards.innerHTML = "";
+  partitionResults.innerHTML = `<article class="partition-card"><p class="empty-state">${escapeHtml(message)}</p></article>`;
+}
+
+async function pollJob(jobId) {
+  while (true) {
+    const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`);
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.detail || "Unable to fetch analysis job status.");
+    }
+
+    if (payload.status === "completed") {
+      return payload.result;
+    }
+    if (payload.status === "failed") {
+      throw new Error(payload.error_message || "Analysis job failed.");
+    }
+
+    renderMessage(`Job ${payload.job_id} is ${payload.status}. Refreshing results...`);
+    await new Promise((resolve) => window.setTimeout(resolve, pollIntervalMs));
+  }
+}
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   submitButton.disabled = true;
-  submitButton.textContent = "Analyzing...";
+  submitButton.textContent = "Queueing...";
 
   const formData = new FormData(form);
   for (const [key, value] of [...formData.entries()]) {
@@ -131,6 +158,7 @@ form.addEventListener("submit", async (event) => {
   }
 
   try {
+    renderMessage("Submitting analysis job...");
     const response = await fetch("/api/analyze/upload", {
       method: "POST",
       body: formData,
@@ -139,11 +167,12 @@ form.addEventListener("submit", async (event) => {
     if (!response.ok) {
       throw new Error(payload.detail || "Analysis failed.");
     }
-    renderResults(payload);
+    submitButton.textContent = "Polling...";
+    renderMessage(`Job ${payload.job_id} accepted. Waiting for analysis to finish...`);
+    const result = await pollJob(payload.job_id);
+    renderResults(result);
   } catch (error) {
-    resultsPanel.classList.remove("hidden");
-    summaryCards.innerHTML = "";
-    partitionResults.innerHTML = `<article class="partition-card"><p class="empty-state">${escapeHtml(error.message)}</p></article>`;
+    renderMessage(error.message);
   } finally {
     submitButton.disabled = false;
     submitButton.textContent = "Run Fraud Analysis";
@@ -151,4 +180,3 @@ form.addEventListener("submit", async (event) => {
 });
 
 checkHealth();
-
