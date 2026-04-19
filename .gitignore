@@ -16,7 +16,8 @@ htmlcov/
 node_modules/
 dist/
 build/
+frontend/bin/
+frontend/obj/
 .env
 *.sqlite3
 *.db
-

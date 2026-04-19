@@ -5,7 +5,6 @@ from pathlib import Path
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
@@ -63,6 +62,13 @@ def create_app() -> FastAPI:
     @app.get("/api/health", response_model=HealthResponse)
     def healthcheck() -> HealthResponse:
         return HealthResponse(status="ok")
+
+    @app.get("/")
+    def root() -> dict[str, str]:
+        return {
+            "service": settings.app_name,
+            "message": "Fraud Pattern Analyzer API is running. Start the Blazor app from the frontend workspace for the analyst UI.",
+        }
 
     @app.get("/api/sample/demo-transactions.csv")
     def demo_transactions() -> FileResponse:
@@ -178,8 +184,6 @@ def create_app() -> FastAPI:
         result["processed_records"] = result["transaction_count"]
         return PartitionSummaryResponse.model_validate(result)
 
-    frontend_dir = Path(__file__).resolve().parents[2] / "frontend"
-    app.mount("/", StaticFiles(directory=frontend_dir, html=True), name="frontend")
     return app
 
 

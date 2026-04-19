@@ -3,15 +3,15 @@
 ## Overview
 
 This project is designed as a compact full-stack fraud analysis platform with a strong backend
-focus. The primary product goal is to ingest anonymized transaction records, preserve
-`source_partition` isolation, and surface suspicious transaction patterns through a simple web
-interface.
+focus and a C# analyst-facing application. The primary product goal is to ingest anonymized
+transaction records, preserve `source_partition` isolation, and surface suspicious transaction
+patterns through an interactive operator console.
 
 ## System Diagram
 
 ```mermaid
 flowchart LR
-    UI["Static Frontend<br/>Upload + Review"] --> API["FastAPI API"]
+    UI["Blazor Server App<br/>Upload + Review"] --> API["FastAPI API"]
     API --> INGEST["Batch Ingestion Service"]
     INGEST --> DB[("PostgreSQL / Supabase")]
     DB --> DETECT["Detection Service (Pandas)"]
@@ -24,14 +24,16 @@ flowchart LR
 
 ### Frontend
 
-- Static HTML, CSS, and JavaScript served directly by FastAPI
-- Upload form for CSV files and configurable pipeline controls
+- Blazor Server application written in C#
+- Typed `HttpClient` integration with the FastAPI backend
+- Upload workflow for CSV files and configurable pipeline controls
+- Live polling of background job progress
 - Results dashboard showing:
   - partitions processed
   - records processed
   - total alerts
-  - top triggered fraud rules
-  - per-partition alert tables
+  - top risky accounts and merchants
+  - alert triage and export actions
 
 ### API Layer
 
@@ -109,7 +111,7 @@ would create false positives and privacy concerns.
 5. `DetectionService` loads transaction history for each partition found in the upload.
 6. Fraud rules produce alert records with scores, severities, and rule details.
 7. Alerts are stored in `fraud_alerts` and returned in the API response.
-8. Frontend renders partition-level summaries and suspicious transaction rows.
+8. The Blazor app renders partition-level summaries, trend cards, and suspicious transaction rows.
 
 ## Configuration
 
@@ -149,12 +151,11 @@ Covered scenarios:
 
 - Run PostgreSQL through the included Docker Compose file
 - Start FastAPI with Uvicorn
-- Use the bundled frontend served by the API
+- Start the Blazor Server app with `dotnet run` from `frontend/`
 
 ### Supabase
 
 - Provision a Supabase project
 - Copy the project Postgres connection string into `DATABASE_URL`
 - Run the FastAPI app on a small VM or container host
-- Keep the frontend bundled with the API for a simple single-service deployment
-
+- Host the Blazor Server app separately and point its `FraudApi:BaseUrl` setting at the API host

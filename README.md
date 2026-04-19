@@ -9,7 +9,7 @@ batch safety, retry behavior, partition isolation, and test coverage.
 
 - Backend: Python, FastAPI, SQLAlchemy, Pandas
 - Database: PostgreSQL, with Supabase-compatible connection support
-- Frontend: Static HTML, CSS, and JavaScript served by FastAPI
+- Frontend: C# Blazor Server application
 - Testing: PyTest
 - Data model: `transactions` and `fraud_alerts` tables with partition-aware uniqueness rules
 
@@ -21,7 +21,7 @@ batch safety, retry behavior, partition isolation, and test coverage.
   - transaction velocity spikes
   - abnormal amount spikes using median and z-score comparisons
 - Persisted alert records for downstream review and auditability
-- Simple browser UI for uploading transaction files and reviewing suspicious events
+- Blazor analyst console for uploads, progress polling, dashboards, triage, and export
 
 ## Architecture
 
@@ -29,7 +29,7 @@ Detailed design notes live in [docs/architecture.md](/C:/Projects/FraudAnalyzer/
 
 High-level flow:
 
-1. The frontend uploads a CSV batch to the FastAPI API.
+1. The Blazor frontend uploads a CSV batch to the FastAPI API.
 2. The ingestion layer validates required columns and normalizes records.
 3. Records are written to PostgreSQL in configurable chunks with retry handling.
 4. Pandas loads partition-scoped transaction histories and computes fraud signals per
@@ -65,7 +65,9 @@ Update `DATABASE_URL` if you want to point to Supabase instead of local PostgreS
 pip install -r requirements.txt
 ```
 
-### 4. Run the application
+Install the .NET 8 SDK as well so the Blazor frontend can run locally.
+
+### 4. Run the backend
 
 From `C:\Projects\FraudAnalyzer\backend`:
 
@@ -73,7 +75,17 @@ From `C:\Projects\FraudAnalyzer\backend`:
 uvicorn app.main:app --reload
 ```
 
-Open [http://127.0.0.1:8000](http://127.0.0.1:8000).
+The API will be available at [http://127.0.0.1:8000](http://127.0.0.1:8000).
+
+### 5. Run the C# frontend
+
+From `C:\Projects\FraudAnalyzer\frontend`:
+
+```powershell
+dotnet run
+```
+
+Open [https://localhost:5001](https://localhost:5001) or the URL printed by ASP.NET Core.
 
 ## Test Suite
 
@@ -100,7 +112,6 @@ to test the upload flow quickly.
 
 - `backend/app/` API, data models, and pipeline services
 - `backend/tests/` PyTest coverage
-- `frontend/` static UI served by FastAPI
+- `frontend/` Blazor Server application
 - `sample_data/` sample transaction batch
 - `docs/` architecture and design notes
-

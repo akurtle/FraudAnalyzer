@@ -1,0 +1,753 @@
+@page "/"
+@inject FraudApiClient ApiClient
+@inject ExportService ExportService
+@inject IJSRuntime JS
+
+<section class="hero-card">
+    <div class="eyebrow-row">
+        <span class="eyebrow">C# Analyst Console</span>
+        <span class="status-pill @( _apiOnline ? "online" : "offline")">@_apiStatusLabel</span>
+    </div>
+    <h1>Analyze suspicious transaction patterns without mixing tenant partitions.</h1>
+    <p class="hero-copy">
+        The frontend now runs as a Blazor Server application, giving analysts a C#-native
+        experience for uploads, long-running job progress, filtering, triage, and export.
+    </p>
+    <div class="hero-metrics">
+        <article>
+            <span>Frontend</span>
+            <strong>Blazor Server</strong>
+        </article>
+        <article>
+            <span>Backend</span>
+            <strong>FastAPI + Pandas</strong>
+        </article>
+        <article>
+            <span>Database</span>
+            <strong>PostgreSQL / Supabase</strong>
+        </article>
+    </div>
+</section>
+
+<section class="grid-layout">
+    <article class="panel upload-panel">
+        <div class="panel-heading">
+            <span class="section-tag">Pipeline Input</span>
+            <h2>Upload Transaction Batch</h2>
+        </div>
+
+        <div class="upload-form">
+            <label>
+                <span>CSV File</span>
+                <InputFile OnChange="HandleFileSelectedAsync" accept=".csv" />
+            </label>
+
+            <div class="selected-file @(string.IsNullOrWhiteSpace(_selectedFileName) ? "hidden" : string.Empty)">
+                <strong>@(_selectedFileName ?? "No file selected")</strong>
+                <span>@_selectedFileSource</span>
+            </div>
+
+            <div class="two-column">
+                <label>
+                    <span>Source Partition</span>
+                    <input @bind="_upload.SourcePartition" placeholder="tenant-a" />
+                </label>
+                <label>
+                    <span>Batch Size</span>
+                    <input type="number" min="1" @bind="_upload.BatchSize" />
+                </label>
+            </div>
+
+            <div class="two-column">
+                <label>
+                    <span>Time Windows (hours)</span>
+                    <input @bind="_upload.TimeWindows" />
+                </label>
+                <label>
+                    <span>Max Retries</span>
+                    <input type="number" min="1" @bind="_upload.MaxRetries" />
+                </label>
+            </div>
+
+            <div class="button-row">
+                <button @onclick="SubmitAnalysisAsync" disabled="@_isSubmitting">@( _isSubmitting ? "Polling..." : "Run Fraud Analysis")</button>
+                <button @onclick="LoadDemoSampleAsync" type="button" class="secondary-button" disabled="@_isSubmitting">Use Demo Sample</button>
+            </div>
+        </div>
+
+        <div class="progress-card @(!_showProgress ? "hidden" : string.Empty)">
+            <div class="progress-copy">
+                <strong>Stage: @FormatStage(_currentStage)</strong>
+                <span>@_progressPercentage%</span>
+            </div>
+            <div class="progress-track">
+                <div class="progress-fill" style="width:@($"{_progressPercentage}%")"></div>
+            </div>
+        </div>
+
+        <div class="help-card">
+            <h3>Expected CSV columns</h3>
+            <p>
+                Required: <code>transaction_id</code>, <code>account_id</code>,
+                <code>merchant_id</code>, <code>amount</code>, <code>event_ts</code>.
+            </p>
+            <p>
+                Optional: <code>source_partition</code>, <code>country_code</code>,
+                <code>device_id</code>, <code>status</code>.
+            </p>
+            <p class="muted">
+                If the CSV omits <code>source_partition</code>, the form value is applied to every
+                record so analysis stays partition-isolated.
+            </p>
+        </div>
+    </article>
+
+    <article class="panel architecture-panel">
+        <div class="panel-heading">
+            <span class="section-tag">Application Shape</span>
+            <h2>How The New Frontend Flows</h2>
+        </div>
+        <ol class="architecture-list">
+            <li>Blazor Server captures upload parameters and streams the CSV to FastAPI.</li>
+            <li>FastAPI accepts the job and returns a job identifier immediately.</li>
+            <li>The C# app polls job status and renders progress updates without blocking the UI.</li>
+            <li>Completed run data is turned into analyst dashboards, partition summaries, and triage tables.</li>
+            <li>Analysts can filter alerts, change statuses, and export current findings as JSON or CSV.</li>
+        </ol>
+        <div class="partition-badge-row">
+            <span>tenant-a</span>
+            <span>tenant-b</span>
+            <span>tenant-c</span>
+        </div>
+    </article>
+</section>
+
+<section class="panel status-panel @(!ShowStatusPanel ? "hidden" : string.Empty)">
+    <div class="panel-heading">
+        <span class="section-tag">Job Console</span>
+        <h2>Background Analysis Status</h2>
+    </div>
+    <article class="partition-card">
+        <p class="empty-state">@_statusMessage</p>
+    </article>
+</section>
+
+<section class="panel results-panel @(_currentResult is null ? "hidden" : string.Empty)">
+    <div class="panel-heading">
+        <span class="section-tag">Analysis Output</span>
+        <h2>Flagged Fraud Patterns</h2>
+    </div>
+    <div class="button-row export-row">
+        <button @onclick="ExportJsonAsync" type="button">Download JSON</button>
+        <button @onclick="ExportCsvAsync" type="button" class="secondary-button">Download CSV</button>
+    </div>
+
+    <section class="workbench-panel">
+        <div class="panel-heading">
+            <span class="section-tag">Risk Dashboard</span>
+            <h3>Partition trends and high-risk entities</h3>
+        </div>
+        <div class="summary-cards">
+            @foreach (var metric in BuildTrendMetrics())
+            {
+                <article class="summary-card">
+                    <span>@metric.Label</span>
+                    <strong>@metric.Value</strong>
+                    <small>@metric.DeltaLabel</small>
+                </article>
+            }
+        </div>
+        <div class="dashboard-grid">
+            <article class="partition-card">
+                <h3>Top Risky Accounts</h3>
+                @RenderInsightList(BuildEntityInsights("account_id"), "No risky accounts yet.")
+            </article>
+            <article class="partition-card">
+                <h3>Top Risky Merchants</h3>
+                @RenderInsightList(BuildEntityInsights("merchant_id"), "No risky merchants yet.")
+            </article>
+            <article class="partition-card">
+                <h3>Partition Spotlight</h3>
+                @RenderInsightList(BuildPartitionInsights(), "No risky partitions yet.")
+            </article>
+        </div>
+    </section>
+
+    <section class="workbench-panel">
+        <div class="panel-heading">
+            <span class="section-tag">Analyst Workbench</span>
+            <h3>Filter and triage alerts</h3>
+        </div>
+        <div class="upload-form compact-form">
+            <div class="filter-grid">
+                <label>
+                    <span>Partition</span>
+                    <input @bind="_filters.SourcePartition" placeholder="tenant-a" />
+                </label>
+                <label>
+                    <span>Severity</span>
+                    <input @bind="_filters.Severity" placeholder="high" />
+                </label>
+                <label>
+                    <span>Rule</span>
+                    <input @bind="_filters.RuleName" placeholder="amount_spike" />
+                </label>
+                <label>
+                    <span>Account</span>
+                    <input @bind="_filters.AccountId" placeholder="acct-1" />
+                </label>
+                <label>
+                    <span>Merchant</span>
+                    <input @bind="_filters.MerchantId" placeholder="merchant-10" />
+                </label>
+                <label>
+                    <span>Window</span>
+                    <input type="number" min="1" @bind="_filters.WindowHours" />
+                </label>
+                <label>
+                    <span>Analyst Status</span>
+                    <select @bind="_filters.AnalystStatus">
+                        <option value="">All</option>
+                        <option value="open">Open</option>
+                        <option value="reviewed">Reviewed</option>
+                        <option value="dismissed">Dismissed</option>
+                    </select>
+                </label>
+            </div>
+            <div class="button-row">
+                <button @onclick="ApplyFiltersAsync" type="button">Apply Filters</button>
+                <button @onclick="ClearFiltersAsync" type="button" class="secondary-button">Clear</button>
+            </div>
+        </div>
+
+        @if (_workbenchAlerts.Count == 0)
+        {
+            <p class="empty-state">@_workbenchEmptyState</p>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Partition</th>
+                            <th>Transaction</th>
+                            <th>Account</th>
+                            <th>Merchant</th>
+                            <th>Rule</th>
+                            <th>Severity</th>
+                            <th>Explanation</th>
+                            <th>Triage</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var alert in _workbenchAlerts)
+                        {
+                            <tr>
+                                <td><code>@alert.SourcePartition</code></td>
+                                <td><code>@alert.TransactionId</code></td>
+                                <td><code>@alert.AccountId</code></td>
+                                <td><code>@alert.MerchantId</code></td>
+                                <td>@alert.RuleName</td>
+                                <td><span class="severity-chip">@alert.Severity</span></td>
+                                <td>@GetExplanation(alert)</td>
+                                <td>
+                                    <select value="@alert.AnalystStatus" @onchange="args => HandleAlertStatusChangedAsync(alert, args)">
+                                        <option value="open">Open</option>
+                                        <option value="reviewed">Reviewed</option>
+                                        <option value="dismissed">Dismissed</option>
+                                    </select>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+
+    <div class="summary-cards">
+        @foreach (var metric in BuildResultMetrics())
+        {
+            <article class="summary-card">
+                <span>@metric.Label</span>
+                <strong>@metric.Value</strong>
+            </article>
+        }
+    </div>
+
+    <div class="partition-results">
+        @foreach (var partition in _currentResult?.Partitions ?? Array.Empty<PartitionSummaryResponse>())
+        {
+            <article class="partition-card">
+                <header>
+                    <div>
+                        <span class="section-tag">@partition.SourcePartition</span>
+                        <h3>@partition.SourcePartition</h3>
+                    </div>
+                    <div class="partition-meta">
+                        <span class="detail-pill">Processed @partition.ProcessedRecords</span>
+                        <span class="detail-pill">Transactions @partition.TransactionCount</span>
+                        <span class="detail-pill">Alerts @partition.AlertCount</span>
+                    </div>
+                </header>
+
+                <div class="partition-meta">
+                    @if (partition.RulesTriggered.Count == 0)
+                    {
+                        <span class="detail-pill">No rules triggered</span>
+                    }
+                    else
+                    {
+                        @foreach (var rule in partition.RulesTriggered)
+                        {
+                            <span class="rule-chip">@rule.Key: @rule.Value</span>
+                        }
+                    }
+                </div>
+
+                @if (partition.Alerts.Count == 0)
+                {
+                    <p class="empty-state">No alerts were generated for this partition using the current thresholds.</p>
+                }
+                else
+                {
+                    <div class="table-wrap">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Transaction</th>
+                                    <th>Account</th>
+                                    <th>Rule</th>
+                                    <th>Severity</th>
+                                    <th>Score</th>
+                                    <th>Window</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var alert in partition.Alerts)
+                                {
+                                    <tr>
+                                        <td><code>@alert.TransactionId</code></td>
+                                        <td><code>@alert.AccountId</code></td>
+                                        <td>@alert.RuleName</td>
+                                        <td><span class="severity-chip">@alert.Severity</span></td>
+                                        <td>@alert.Score.ToString("0.00")</td>
+                                        <td>@alert.WindowHours</td>
+                                        <td>
+                                            <strong>@GetExplanation(alert)</strong><br />
+                                            <span>@FormatRemainingDetails(alert)</span>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </article>
+        }
+    </div>
+</section>
+
+<section class="footer-note">
+    <p>
+        Start the backend from <code>C:\Projects\FraudAnalyzer\backend</code> with
+        <code>uvicorn app.main:app --reload</code>, then run the Blazor frontend from
+        <code>C:\Projects\FraudAnalyzer\frontend</code> with <code>dotnet run</code>.
+    </p>
+</section>
+
+@code {
+    private const long MaxUploadBytes = 25 * 1024 * 1024;
+
+    private readonly UploadFormState _upload = new();
+    private AlertFilterState _filters = new();
+    private IReadOnlyList<AlertResponse> _workbenchAlerts = [];
+    private IReadOnlyList<AnalysisRunResponse> _recentRuns = [];
+
+    private UploadAnalysisResponse? _currentResult;
+    private string? _currentRunId;
+    private string? _statusMessage;
+    private string _workbenchEmptyState = "Upload a batch to start triaging alerts.";
+    private string _apiStatusLabel = "Checking API...";
+    private string _currentStage = "queued";
+    private string? _selectedFileName;
+    private string? _selectedFileSource;
+    private byte[]? _selectedFileContent;
+    private int _progressPercentage;
+    private bool _apiOnline;
+    private bool _isSubmitting;
+    private bool _showProgress;
+
+    private bool ShowStatusPanel => !string.IsNullOrWhiteSpace(_statusMessage);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CheckHealthAsync();
+        await LoadAlertsAsync();
+    }
+
+    private async Task CheckHealthAsync()
+    {
+        try
+        {
+            var response = await ApiClient.GetHealthAsync();
+            _apiOnline = response.Status.Equals("ok", StringComparison.OrdinalIgnoreCase);
+            _apiStatusLabel = _apiOnline ? "API online" : "API offline";
+        }
+        catch
+        {
+            _apiOnline = false;
+            _apiStatusLabel = "API offline";
+        }
+    }
+
+    private async Task HandleFileSelectedAsync(InputFileChangeEventArgs eventArgs)
+    {
+        var file = eventArgs.File;
+        if (file is null)
+        {
+            return;
+        }
+
+        await using var stream = file.OpenReadStream(MaxUploadBytes);
+        using var memory = new MemoryStream();
+        await stream.CopyToAsync(memory);
+        _selectedFileContent = memory.ToArray();
+        _selectedFileName = file.Name;
+        _selectedFileSource = "Local file";
+        _statusMessage = $"Selected {_selectedFileName} for upload.";
+    }
+
+    private async Task LoadDemoSampleAsync()
+    {
+        try
+        {
+            _selectedFileContent = await ApiClient.GetDemoSampleAsync();
+            _selectedFileName = "demo_transactions.csv";
+            _selectedFileSource = "Bundled demo sample";
+            _statusMessage = "Demo CSV loaded. Run fraud analysis when you're ready.";
+        }
+        catch (Exception exception)
+        {
+            _statusMessage = exception.Message;
+        }
+    }
+
+    private async Task SubmitAnalysisAsync()
+    {
+        if (_selectedFileContent is null || string.IsNullOrWhiteSpace(_selectedFileName))
+        {
+            _statusMessage = "Select a CSV file or load the bundled demo sample before running analysis.";
+            return;
+        }
+
+        _isSubmitting = true;
+        _showProgress = true;
+        _progressPercentage = 0;
+        _currentStage = "queued";
+        _statusMessage = "Submitting analysis job...";
+
+        try
+        {
+            var accepted = await ApiClient.SubmitAnalysisAsync(_selectedFileContent, _selectedFileName, _upload);
+            _currentRunId = accepted.RunId;
+            _statusMessage = $"Job {accepted.JobId} accepted. Waiting for analysis to finish...";
+            await PollJobAsync(accepted.JobId);
+        }
+        catch (Exception exception)
+        {
+            _statusMessage = exception.Message;
+        }
+        finally
+        {
+            _isSubmitting = false;
+        }
+    }
+
+    private async Task PollJobAsync(string jobId)
+    {
+        while (true)
+        {
+            var job = await ApiClient.GetJobAsync(jobId);
+            _currentStage = job.CurrentStage ?? job.Status;
+            _progressPercentage = job.ProgressPercentage ?? 0;
+
+            if (job.Status.Equals("completed", StringComparison.OrdinalIgnoreCase))
+            {
+                _progressPercentage = 100;
+                _currentStage = "completed";
+                _currentResult = job.Result;
+                _statusMessage = null;
+                await RefreshDerivedViewsAsync();
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            if (job.Status.Equals("failed", StringComparison.OrdinalIgnoreCase))
+            {
+                _progressPercentage = 100;
+                _currentStage = "failed";
+                _statusMessage = job.ErrorMessage ?? "Analysis job failed.";
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            _statusMessage = $"Job {job.JobId} is {job.Status}. Refreshing results...";
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(TimeSpan.FromMilliseconds(1200));
+        }
+    }
+
+    private async Task RefreshDerivedViewsAsync()
+    {
+        _recentRuns = await ApiClient.GetRunsAsync(limit: 5);
+        await LoadAlertsAsync();
+    }
+
+    private async Task ApplyFiltersAsync()
+    {
+        await LoadAlertsAsync();
+    }
+
+    private async Task ClearFiltersAsync()
+    {
+        _filters = new AlertFilterState();
+        await LoadAlertsAsync();
+    }
+
+    private async Task LoadAlertsAsync()
+    {
+        try
+        {
+            _workbenchAlerts = await ApiClient.GetAlertsAsync(_filters);
+            _workbenchEmptyState = _workbenchAlerts.Count == 0
+                ? "No alerts matched the current filters."
+                : string.Empty;
+        }
+        catch (Exception exception)
+        {
+            _workbenchAlerts = [];
+            _workbenchEmptyState = exception.Message;
+        }
+    }
+
+    private async Task UpdateAlertStatusAsync(AlertResponse alert, string analystStatus)
+    {
+        try
+        {
+            await ApiClient.UpdateAlertStatusAsync(alert.Id, analystStatus);
+            UpdateAlertInCurrentResult(alert.Id, analystStatus);
+            await LoadAlertsAsync();
+        }
+        catch (Exception exception)
+        {
+            _statusMessage = exception.Message;
+        }
+    }
+
+    private Task HandleAlertStatusChangedAsync(AlertResponse alert, ChangeEventArgs args)
+    {
+        return UpdateAlertStatusAsync(alert, args.Value?.ToString() ?? "open");
+    }
+
+    private void UpdateAlertInCurrentResult(int alertId, string analystStatus)
+    {
+        if (_currentResult is null)
+        {
+            return;
+        }
+
+        foreach (var partition in _currentResult.Partitions)
+        {
+            foreach (var candidate in partition.Alerts.Where(candidate => candidate.Id == alertId))
+            {
+                candidate.AnalystStatus = analystStatus;
+                using var document = JsonDocument.Parse($"\"{analystStatus}\"");
+                candidate.Details["analyst_status"] = document.RootElement.Clone();
+            }
+        }
+    }
+
+    private async Task ExportJsonAsync()
+    {
+        var payload = _currentResult is not null
+            ? ExportService.BuildJson(_currentResult)
+            : ExportService.BuildJson(ExportService.ExportAlerts(BuildExportAlerts()));
+        await DownloadAsync("fraud-analysis-results.json", "application/json", payload);
+    }
+
+    private async Task ExportCsvAsync()
+    {
+        var alerts = BuildExportAlerts();
+        if (alerts.Count == 0)
+        {
+            _statusMessage = "No alerts available to export.";
+            return;
+        }
+
+        var csv = ExportService.BuildCsv(alerts);
+        await DownloadAsync("fraud-alerts.csv", "text/csv;charset=utf-8", csv);
+    }
+
+    private async Task DownloadAsync(string fileName, string contentType, string content)
+    {
+        var base64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(content));
+        await JS.InvokeVoidAsync("downloadFile", fileName, contentType, base64);
+    }
+
+    private IReadOnlyList<AlertResponse> BuildExportAlerts()
+    {
+        if (_workbenchAlerts.Count > 0)
+        {
+            return _workbenchAlerts;
+        }
+
+        return _currentResult?.Partitions.SelectMany(partition => partition.Alerts).ToList() ?? [];
+    }
+
+    private IReadOnlyList<MetricCard> BuildResultMetrics()
+    {
+        if (_currentResult is null)
+        {
+            return [];
+        }
+
+        return
+        [
+            new MetricCard("Partitions Processed", _currentResult.ProcessedPartitions.ToString()),
+            new MetricCard("Records Processed", _currentResult.ProcessedRecords.ToString()),
+            new MetricCard("Total Alerts", _currentResult.TotalAlerts.ToString())
+        ];
+    }
+
+    private IReadOnlyList<TrendMetric> BuildTrendMetrics()
+    {
+        if (_currentResult is null)
+        {
+            return [];
+        }
+
+        var previousRun = _recentRuns.FirstOrDefault(run =>
+            run.RunId != _currentRunId &&
+            run.Status.Equals("completed", StringComparison.OrdinalIgnoreCase));
+
+        var previousSummary = previousRun?.Summary;
+
+        return
+        [
+            new TrendMetric(
+                "Alert Trend",
+                _currentResult.TotalAlerts.ToString(),
+                BuildDeltaLabel(previousSummary?.GetValueOrDefault("total_alerts"), _currentResult.TotalAlerts)),
+            new TrendMetric(
+                "Record Trend",
+                _currentResult.ProcessedRecords.ToString(),
+                BuildDeltaLabel(previousSummary?.GetValueOrDefault("processed_records"), _currentResult.ProcessedRecords)),
+            new TrendMetric(
+                "Partition Trend",
+                _currentResult.ProcessedPartitions.ToString(),
+                BuildDeltaLabel(previousSummary?.GetValueOrDefault("processed_partitions"), _currentResult.ProcessedPartitions))
+        ];
+    }
+
+    private static string BuildDeltaLabel(object? baselineValue, int currentValue)
+    {
+        if (baselineValue is null || !int.TryParse(baselineValue.ToString(), out var baseline))
+        {
+            return "No prior run";
+        }
+
+        var delta = currentValue - baseline;
+        return delta >= 0 ? $"+{delta}" : delta.ToString();
+    }
+
+    private IReadOnlyList<InsightEntry> BuildEntityInsights(string propertyName)
+    {
+        if (_currentResult is null)
+        {
+            return [];
+        }
+
+        return _currentResult.Partitions
+            .SelectMany(partition => partition.Alerts)
+            .GroupBy(alert => propertyName == "account_id" ? alert.AccountId : alert.MerchantId)
+            .Select(group => new InsightEntry(
+                group.Key,
+                group.Count(),
+                group.Sum(alert => alert.Score)))
+            .OrderByDescending(entry => entry.Score)
+            .Take(5)
+            .ToList();
+    }
+
+    private IReadOnlyList<InsightEntry> BuildPartitionInsights()
+    {
+        if (_currentResult is null)
+        {
+            return [];
+        }
+
+        return _currentResult.Partitions
+            .Select(partition => new InsightEntry(
+                partition.SourcePartition,
+                partition.AlertCount,
+                partition.Alerts.Sum(alert => alert.Score)))
+            .OrderByDescending(entry => entry.Score)
+            .ToList();
+    }
+
+    private RenderFragment RenderInsightList(IReadOnlyList<InsightEntry> entries, string emptyMessage) => builder =>
+    {
+        if (entries.Count == 0)
+        {
+            builder.AddMarkupContent(0, $"<p class=\"empty-state\">{emptyMessage}</p>");
+            return;
+        }
+
+        var sequence = 1;
+        foreach (var entry in entries)
+        {
+            builder.OpenElement(sequence++, "div");
+            builder.AddAttribute(sequence++, "class", "insight-row");
+            builder.OpenElement(sequence++, "div");
+            builder.OpenElement(sequence++, "strong");
+            builder.AddContent(sequence++, entry.Label);
+            builder.CloseElement();
+            builder.OpenElement(sequence++, "span");
+            builder.AddContent(sequence++, $"{entry.AlertCount} alerts");
+            builder.CloseElement();
+            builder.CloseElement();
+            builder.OpenElement(sequence++, "span");
+            builder.AddContent(sequence++, $"{entry.Score:0.00} risk score");
+            builder.CloseElement();
+            builder.CloseElement();
+        }
+    };
+
+    private static string FormatStage(string? stage) => (stage ?? "queued").Replace("_", " ", StringComparison.Ordinal);
+
+    private static string GetExplanation(AlertResponse alert)
+    {
+        if (alert.Details.TryGetValue("explanation", out var explanation))
+        {
+            return explanation.ValueKind == JsonValueKind.String
+                ? explanation.GetString() ?? "No explanation provided"
+                : explanation.ToString();
+        }
+
+        return "No explanation provided";
+    }
+
+    private static string FormatRemainingDetails(AlertResponse alert)
+    {
+        var values = alert.Details
+            .Where(pair => pair.Key is not "explanation" and not "analyst_status")
+            .Select(pair => $"{pair.Key}: {pair.Value}")
+            .Take(4)
+            .ToList();
+
+        return values.Count == 0 ? "No details" : string.Join(" | ", values);
+    }
+}
