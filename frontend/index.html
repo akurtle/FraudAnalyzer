@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Fraud Pattern Analyzer</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="background-glow glow-left"></div>
+    <div class="background-glow glow-right"></div>
+
+    <main class="page-shell">
+      <section class="hero-card">
+        <div class="eyebrow-row">
+          <span class="eyebrow">Batch Fraud Detection</span>
+          <span id="api-status" class="status-pill">Checking API...</span>
+        </div>
+        <h1>Analyze suspicious transaction patterns without mixing tenant partitions.</h1>
+        <p class="hero-copy">
+          Upload anonymized CSV transaction data, run configurable batch processing, and
+          review high-risk alerts generated from rolling anomaly detection windows.
+        </p>
+        <div class="hero-metrics">
+          <article>
+            <span>Backend</span>
+            <strong>FastAPI + Pandas</strong>
+          </article>
+          <article>
+            <span>Database</span>
+            <strong>PostgreSQL / Supabase</strong>
+          </article>
+          <article>
+            <span>Isolation</span>
+            <strong>Source Partition Aware</strong>
+          </article>
+        </div>
+      </section>
+
+      <section class="grid-layout">
+        <article class="panel upload-panel">
+          <div class="panel-heading">
+            <span class="section-tag">Pipeline Input</span>
+            <h2>Upload Transaction Batch</h2>
+          </div>
+          <form id="upload-form" class="upload-form">
+            <label>
+              <span>CSV File</span>
+              <input type="file" id="file" name="file" accept=".csv" required />
+            </label>
+
+            <div class="two-column">
+              <label>
+                <span>Source Partition</span>
+                <input
+                  type="text"
+                  id="source_partition"
+                  name="source_partition"
+                  placeholder="tenant-a"
+                />
+              </label>
+              <label>
+                <span>Batch Size</span>
+                <input type="number" id="batch_size" name="batch_size" min="1" value="250" />
+              </label>
+            </div>
+
+            <div class="two-column">
+              <label>
+                <span>Time Windows (hours)</span>
+                <input type="text" id="time_windows" name="time_windows" value="1,24,72" />
+              </label>
+              <label>
+                <span>Max Retries</span>
+                <input type="number" id="max_retries" name="max_retries" min="1" value="3" />
+              </label>
+            </div>
+
+            <button id="submit-button" type="submit">Run Fraud Analysis</button>
+          </form>
+
+          <div class="help-card">
+            <h3>Expected CSV columns</h3>
+            <p>
+              Required: <code>transaction_id</code>, <code>account_id</code>,
+              <code>merchant_id</code>, <code>amount</code>, <code>event_ts</code>.
+            </p>
+            <p>
+              Optional: <code>source_partition</code>, <code>country_code</code>,
+              <code>device_id</code>, <code>status</code>.
+            </p>
+            <p class="muted">
+              If the CSV omits <code>source_partition</code>, the form value is applied to
+              every record so analysis remains partition-isolated.
+            </p>
+          </div>
+        </article>
+
+        <article class="panel architecture-panel">
+          <div class="panel-heading">
+            <span class="section-tag">Architecture Snapshot</span>
+            <h2>How The System Flows</h2>
+          </div>
+          <ol class="architecture-list">
+            <li>
+              Frontend uploads a CSV batch with optional batch-size and retry overrides.
+            </li>
+            <li>
+              FastAPI validates schema, applies partition assignment, and processes records in
+              configurable chunks.
+            </li>
+            <li>
+              PostgreSQL stores partitioned transactions and persisted alert records for
+              downstream review.
+            </li>
+            <li>
+              Pandas computes rolling amount spikes and velocity spikes within each tenant
+              partition only.
+            </li>
+            <li>
+              The UI renders alert counts, triggered rules, and the top suspicious events.
+            </li>
+          </ol>
+          <div class="partition-badge-row">
+            <span>tenant-a</span>
+            <span>tenant-b</span>
+            <span>tenant-c</span>
+          </div>
+        </article>
+      </section>
+
+      <section id="results-panel" class="panel results-panel hidden">
+        <div class="panel-heading">
+          <span class="section-tag">Analysis Output</span>
+          <h2>Flagged Fraud Patterns</h2>
+        </div>
+
+        <div id="summary-cards" class="summary-cards"></div>
+        <div id="partition-results" class="partition-results"></div>
+      </section>
+
+      <section class="footer-note">
+        <p>
+          Start the backend with
+          <code>uvicorn app.main:app --reload</code> from
+          <code>C:\Projects\FraudAnalyzer\backend</code>.
+        </p>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
+

@@ -1,0 +1,12 @@
+transaction_id,account_id,merchant_id,amount,event_ts,source_partition,country_code,device_id,status
+tx-1001,acct-1,merchant-10,22.15,2026-01-01T00:00:00Z,tenant-a,CA,device-1,approved
+tx-1002,acct-1,merchant-10,24.80,2026-01-01T00:08:00Z,tenant-a,CA,device-1,approved
+tx-1003,acct-1,merchant-10,25.10,2026-01-01T00:15:00Z,tenant-a,CA,device-1,approved
+tx-1004,acct-1,merchant-10,231.90,2026-01-01T00:20:00Z,tenant-a,CA,device-1,approved
+tx-1005,acct-2,merchant-11,18.00,2026-01-01T03:00:00Z,tenant-b,US,device-9,approved
+tx-1006,acct-2,merchant-11,19.25,2026-01-01T03:05:00Z,tenant-b,US,device-9,approved
+tx-1007,acct-2,merchant-11,20.10,2026-01-01T03:10:00Z,tenant-b,US,device-9,approved
+tx-1008,acct-2,merchant-11,21.40,2026-01-01T03:15:00Z,tenant-b,US,device-9,approved
+tx-1009,acct-2,merchant-11,22.75,2026-01-01T03:18:00Z,tenant-b,US,device-9,approved
+tx-1010,acct-3,merchant-20,15.00,2026-01-01T04:00:00Z,tenant-c,GB,device-21,declined
+
