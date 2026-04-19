@@ -7,12 +7,15 @@ const workbenchResults = document.getElementById("workbench-results");
 const apiStatus = document.getElementById("api-status");
 const filterForm = document.getElementById("filter-form");
 const clearFiltersButton = document.getElementById("clear-filters");
+const exportJsonButton = document.getElementById("export-json");
+const exportCsvButton = document.getElementById("export-csv");
 const progressCard = document.getElementById("job-progress-card");
 const progressLabel = document.getElementById("job-progress-label");
 const progressMeta = document.getElementById("job-progress-meta");
 const progressFill = document.getElementById("job-progress-fill");
 const pollIntervalMs = 1200;
 let currentResult = null;
+let currentWorkbenchAlerts = [];
 
 async function checkHealth() {
   try {
@@ -196,6 +199,7 @@ async function loadAlerts() {
   if (!response.ok) {
     throw new Error(alerts.detail || "Unable to load alerts.");
   }
+  currentWorkbenchAlerts = alerts;
 
   if (alerts.length === 0) {
     workbenchResults.innerHTML = `<p class="empty-state">No alerts matched the current filters.</p>`;
@@ -219,6 +223,62 @@ async function loadAlerts() {
       <tbody>${renderWorkbenchRows(alerts)}</tbody>
     </table>
   `;
+}
+
+function triggerDownload(filename, content, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
+function flattenAlertsForExport() {
+  if (currentWorkbenchAlerts.length > 0) {
+    return currentWorkbenchAlerts;
+  }
+  if (!currentResult) {
+    return [];
+  }
+  return currentResult.partitions.flatMap((partition) => partition.alerts);
+}
+
+function buildCsv(alerts) {
+  const headers = [
+    "id",
+    "source_partition",
+    "transaction_id",
+    "account_id",
+    "merchant_id",
+    "rule_name",
+    "severity",
+    "analyst_status",
+    "score",
+    "window_hours",
+    "explanation",
+  ];
+  const rows = alerts.map((alert) =>
+    [
+      alert.id,
+      alert.source_partition,
+      alert.transaction_id,
+      alert.account_id,
+      alert.merchant_id,
+      alert.rule_name,
+      alert.severity,
+      alert.analyst_status || alert.details?.analyst_status || "open",
+      alert.score,
+      alert.window_hours,
+      alert.details?.explanation || "",
+    ]
+      .map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`)
+      .join(","),
+  );
+  return [headers.join(","), ...rows].join("\n");
 }
 
 async function updateAlertStatus(alertId, analystStatus) {
@@ -334,6 +394,24 @@ workbenchResults.addEventListener("change", async (event) => {
   } catch (error) {
     renderMessage(error.message);
   }
+});
+
+exportJsonButton.addEventListener("click", () => {
+  const payload = currentResult || { alerts: flattenAlertsForExport() };
+  triggerDownload(
+    "fraud-analysis-results.json",
+    JSON.stringify(payload, null, 2),
+    "application/json",
+  );
+});
+
+exportCsvButton.addEventListener("click", () => {
+  const alerts = flattenAlertsForExport();
+  if (alerts.length === 0) {
+    workbenchResults.innerHTML = `<p class="empty-state">No alerts available to export.</p>`;
+    return;
+  }
+  triggerDownload("fraud-alerts.csv", buildCsv(alerts), "text/csv;charset=utf-8");
 });
 
 checkHealth();
