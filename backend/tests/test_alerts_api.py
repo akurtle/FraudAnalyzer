@@ -39,3 +39,11 @@ def test_alert_filters_and_status_updates():
         assert filtered_reviewed.status_code == 200
         reviewed_alerts = filtered_reviewed.json()
         assert any(alert["id"] == first_alert["id"] for alert in reviewed_alerts)
+
+
+def test_demo_sample_endpoint_serves_csv():
+    with TestClient(app) as client:
+        response = client.get("/api/sample/demo-transactions.csv")
+
+    assert response.status_code == 200
+    assert "transaction_id,account_id,merchant_id" in response.text

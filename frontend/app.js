@@ -11,6 +11,7 @@ const topPartitions = document.getElementById("top-partitions");
 const apiStatus = document.getElementById("api-status");
 const filterForm = document.getElementById("filter-form");
 const clearFiltersButton = document.getElementById("clear-filters");
+const loadDemoButton = document.getElementById("load-demo-button");
 const exportJsonButton = document.getElementById("export-json");
 const exportCsvButton = document.getElementById("export-csv");
 const progressCard = document.getElementById("job-progress-card");
@@ -339,6 +340,19 @@ function triggerDownload(filename, content, mimeType) {
   URL.revokeObjectURL(url);
 }
 
+async function loadDemoFileIntoForm() {
+  const response = await fetch("/api/sample/demo-transactions.csv");
+  if (!response.ok) {
+    throw new Error("Unable to fetch bundled demo data.");
+  }
+
+  const blob = await response.blob();
+  const file = new File([blob], "demo_transactions.csv", { type: "text/csv" });
+  const dataTransfer = new DataTransfer();
+  dataTransfer.items.add(file);
+  document.getElementById("file").files = dataTransfer.files;
+}
+
 function flattenAlertsForExport() {
   if (currentWorkbenchAlerts.length > 0) {
     return currentWorkbenchAlerts;
@@ -516,6 +530,15 @@ exportCsvButton.addEventListener("click", () => {
     return;
   }
   triggerDownload("fraud-alerts.csv", buildCsv(alerts), "text/csv;charset=utf-8");
+});
+
+loadDemoButton.addEventListener("click", async () => {
+  try {
+    await loadDemoFileIntoForm();
+    renderMessage("Demo CSV loaded into the form. Run fraud analysis when you're ready.");
+  } catch (error) {
+    renderMessage(error.message);
+  }
 });
 
 checkHealth();

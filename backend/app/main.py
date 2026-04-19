@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
@@ -62,6 +63,11 @@ def create_app() -> FastAPI:
     @app.get("/api/health", response_model=HealthResponse)
     def healthcheck() -> HealthResponse:
         return HealthResponse(status="ok")
+
+    @app.get("/api/sample/demo-transactions.csv")
+    def demo_transactions() -> FileResponse:
+        sample_path = Path(__file__).resolve().parents[2] / "sample_data" / "demo_transactions.csv"
+        return FileResponse(sample_path, media_type="text/csv", filename="demo_transactions.csv")
 
     @app.post(
         "/api/analyze/upload",
