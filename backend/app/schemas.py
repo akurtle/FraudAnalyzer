@@ -40,15 +40,34 @@ class HealthResponse(BaseModel):
 
 class AnalysisJobAcceptedResponse(BaseModel):
     job_id: str
+    run_id: str
     status: str
     submitted_at: datetime
 
 
 class AnalysisJobResponse(BaseModel):
     job_id: str
+    run_id: str | None = None
     status: str
     submitted_at: datetime
     started_at: datetime | None = None
     completed_at: datetime | None = None
     error_message: str | None = None
     result: UploadAnalysisResponse | None = None
+
+
+class AnalysisRunResponse(BaseModel):
+    run_id: str
+    job_id: str | None = None
+    source_file_name: str | None = None
+    status: str
+    parameters: dict
+    processed_partitions: int | None = None
+    processed_records: int | None = None
+    total_alerts: int | None = None
+    duration_ms: int | None = None
+    summary: dict | None = None
+    error_message: str | None = None
+    submitted_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None

@@ -12,6 +12,7 @@ from app.database import SessionLocal, get_session, init_db
 from app.schemas import (
     AnalysisJobAcceptedResponse,
     AnalysisJobResponse,
+    AnalysisRunResponse,
     HealthResponse,
     PartitionSummaryResponse,
 )
@@ -79,6 +80,7 @@ def create_app() -> FastAPI:
         try:
             return app.state.job_service.submit_job(
                 payload=payload,
+                source_file_name=file.filename,
                 default_partition=source_partition,
                 batch_size=batch_size,
                 max_retries=max_retries,
@@ -94,6 +96,17 @@ def create_app() -> FastAPI:
         response = app.state.job_service.get_job_response(session, job_id)
         if response is None:
             raise HTTPException(status_code=404, detail="Analysis job not found.")
+        return response
+
+    @app.get("/api/runs", response_model=list[AnalysisRunResponse])
+    def list_runs(limit: int = 10, session: Session = Depends(get_session)) -> list[AnalysisRunResponse]:
+        return app.state.job_service.list_runs(session, limit=limit)
+
+    @app.get("/api/runs/{run_id}", response_model=AnalysisRunResponse)
+    def get_run(run_id: str, session: Session = Depends(get_session)) -> AnalysisRunResponse:
+        response = app.state.job_service.get_run_response(session, run_id)
+        if response is None:
+            raise HTTPException(status_code=404, detail="Analysis run not found.")
         return response
 
     @app.get("/api/partitions", response_model=list[str])
