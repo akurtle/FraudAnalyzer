@@ -7,7 +7,7 @@ batch safety, retry behavior, partition isolation, and test coverage.
 
 ## Stack
 
-- Backend: Python, FastAPI, SQLAlchemy, Pandas
+- Backend: Python, FastAPI, SQLAlchemy, Pandas 
 - Database: PostgreSQL, with Supabase-compatible connection support
 - Frontend: Astro + React, built to static assets and served by FastAPI
 - Testing: PyTest
